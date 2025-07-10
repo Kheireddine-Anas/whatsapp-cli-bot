@@ -3,6 +3,7 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const readline = require('readline');
 let unreadChatIndexMap = [];
+let groupIndexMap = []; // Store groups for index-based sending
 
 const rl = readline.createInterface({
 	input: process.stdin,
@@ -45,30 +46,37 @@ client.on('message', async (msg) => {
 	if (msg.fromMe) return;
 
 	const contact = await msg.getContact();
+	const chat = await msg.getChat();
 	const sender = contact.pushname || contact.number;
+	
+	// Determine if it's a group message
+	const isGroup = chat.isGroup;
+	const chatName = isGroup ? chat.name : sender;
+	const prefix = isGroup ? '👥' : '📨';
 
 	if (msg.hasMedia) {
 		const media = await msg.downloadMedia();
 		const mime = media.mimetype;
 
 		notifier.notify({
-			title: "💬 WhatsApp CLI",
-			message: "New message!",
+			title: isGroup ? `💬 ${chatName}` : "💬 WhatsApp CLI",
+			message: isGroup ? `${sender}: Media message` : "New media message!",
 			sound: true,
 			wait: false
 		});
 
-		console.log(`\n🖼 Media message from ${sender}`);
+		console.log(`\n🖼 Media message from ${sender}${isGroup ? ` in ${chatName}` : ''}`);
 		console.log(`📎 Type: ${mime}`);
 		if (msg.caption) console.log(`💬 Caption: ${msg.caption}`);
 	} else if (msg.body) {
 		notifier.notify({
-			title: `📨 Message from ${sender}`,
-			message: msg.body.length > 50 ? msg.body.slice(0, 50) + '...' : msg.body,
+			title: isGroup ? `${prefix} ${chatName}` : `📨 Message from ${sender}`,
+			message: isGroup ? `${sender}: ${msg.body.length > 40 ? msg.body.slice(0, 40) + '...' : msg.body}` : 
+					 msg.body.length > 50 ? msg.body.slice(0, 50) + '...' : msg.body,
 			sound: true
 		});
 
-		console.log(`\n📨 ${sender}: ${msg.body}`);
+		console.log(`\n${prefix} ${isGroup ? `${sender} in ${chatName}` : sender}: ${msg.body}`);
 	}
 });
 
@@ -90,6 +98,32 @@ function startPrompt() {
 						console.log(`✅ Message sent to ${number}`);
 					} catch (e) {
 						console.error('❌ Error sending message:', e.message);
+					}
+				}
+				break;
+
+			case 'sendgroup':
+				const groupIndex = args[1];
+				const groupMessage = args.slice(2).join(' ');
+				if (!groupIndex || !groupMessage) {
+					console.log('Usage: sendgroup <group_index> <message>');
+					console.log('💡 Use "groups" command first to see group indices');
+				} else {
+					try {
+						if (!isNaN(groupIndex) && groupIndexMap.length > 0) {
+							const index = parseInt(groupIndex) - 1;
+							if (index >= 0 && index < groupIndexMap.length) {
+								const targetGroup = groupIndexMap[index];
+								await client.sendMessage(targetGroup.id._serialized, groupMessage);
+								console.log(`✅ Message sent to group "${targetGroup.name}"`);
+							} else {
+								console.log('❌ Invalid group index. Use "groups" to see available groups.');
+							}
+						} else {
+							console.log('❌ Please provide a valid group index. Use "groups" command first.');
+						}
+					} catch (e) {
+						console.error('❌ Error sending message to group:', e.message);
 					}
 				}
 				break;
@@ -116,6 +150,72 @@ function startPrompt() {
 
 				if (!showAll && chatsToShow.length > 10) {
 					console.log(`\n📌 To see all chats, type: list all`);
+				}
+				break;
+
+			case 'groups':
+				try {
+					const allChats = await client.getChats();
+					const groups = allChats.filter(chat => chat.isGroup);
+
+					groupIndexMap = groups; // Store groups globally for index-based sending
+
+					if (groups.length === 0) {
+						console.log('📭 No groups found.');
+						break;
+					}
+
+					console.log('👥 Your Groups:');
+					groups.forEach((group, i) => {
+						const participantCount = group.participants ? group.participants.length : 'Unknown';
+						console.log(`${i + 1}. ${group.name}`);
+						console.log(`   📍 ID: ${group.id.user}`);
+						console.log(`   👤 Participants: ${participantCount}`);
+						if (group.unreadCount > 0) {
+							console.log(`   🔔 Unread: ${group.unreadCount}`);
+						}
+						console.log('');
+					});
+					console.log('💡 Use "send <group_index> <message>" to send to a group by index');
+				} catch (e) {
+					console.error('❌ Error fetching groups:', e.message);
+				}
+				break;
+
+			case 'groupinfo':
+				const targetGroupId = args[1];
+				if (!targetGroupId) {
+					console.log('Usage: groupinfo <group_id>');
+					console.log('💡 Use "groups" command to see group IDs');
+					break;
+				}
+
+				try {
+					const allChats = await client.getChats();
+					const targetGroup = allChats.find(chat => 
+						chat.isGroup && chat.id.user === targetGroupId
+					);
+
+					if (!targetGroup) {
+						console.log('❌ Group not found.');
+						break;
+					}
+
+					console.log(`👥 Group Information: ${targetGroup.name}`);
+					console.log(`📍 Group ID: ${targetGroup.id.user}`);
+					console.log(`📝 Description: ${targetGroup.description || 'No description'}`);
+					console.log(`👤 Participants: ${targetGroup.participants.length}`);
+					console.log(`🔔 Unread messages: ${targetGroup.unreadCount}`);
+					
+					console.log('\n👥 Participants:');
+					for (let participant of targetGroup.participants) {
+						const contact = await client.getContactById(participant.id._serialized);
+						const name = contact.pushname || contact.name || participant.id.user;
+						const isAdmin = participant.isAdmin ? ' (Admin)' : '';
+						console.log(`   • ${name}${isAdmin}`);
+					}
+				} catch (e) {
+					console.error('❌ Error getting group info:', e.message);
 				}
 				break;
 
@@ -198,7 +298,7 @@ function startPrompt() {
 					} else if (m.body) {
 						console.log(`${author}: ${m.body}`);
 					} else {
-						console.log(`${author}: [Empty or unsupported message]`);
+						console.log(`${author}: [Deleted or unsupported message]`);
 					}
 				}
 				break;
@@ -212,7 +312,16 @@ function startPrompt() {
 				process.exit(0);
 
 			default:
-				console.log('❓ Unknown command. Try: send, list, msgs, read, exit');
+				console.log('❓ Unknown command. Available commands:');
+				console.log('📤 send <number> <message> - Send message to contact');
+				console.log('👥 sendgroup <group_index> <message> - Send message to group by index');
+				console.log('📋 list [all] - Show chats');
+				console.log('👥 groups - Show all groups with indices');
+				console.log('ℹ️  groupinfo <group_id> - Show group details');
+				console.log('🔔 msgs - Show unread messages');
+				console.log('📖 read <index|name|number> - Read messages');
+				console.log('🧹 clear - Clear screen');
+				console.log('🚪 exit - Exit bot');
 		}
 
 		startPrompt();
