@@ -125,6 +125,15 @@ John Doe: Great to hear!
 - **WhatsApp's Security**: Uses WhatsApp's official Web API through whatsapp-web.js
 - **Session Persistence**: Once authenticated, you won't need to scan QR code again (unless you clear session data)
 
+## ⚠️ Known Limitations
+
+- **Read Receipts (Blue Ticks):**
+  - When you read messages using this CLI bot, the messages may not appear as "read" (blue tick) to the sender in their WhatsApp app, even if Read Receipts are enabled on both accounts.
+  - This is a limitation of the WhatsApp Web API and how message status is handled by whatsapp-web.js.
+  - Sending a message to the same chat also does not mark previous messages as read.
+
+If you require the "read" status to be reflected to the sender, you may need to open the chat in the official WhatsApp app or WhatsApp Web.
+
 ## 🔄 Development
 
 ### Project Structure
