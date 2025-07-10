@@ -54,20 +54,64 @@ client.on('message', async (msg) => {
 	const chatName = isGroup ? chat.name : sender;
 	const prefix = isGroup ? '👥' : '📨';
 
+	// Create consistent folder name using chat ID
+	const folderName = isGroup ? 
+		chat.name.replace(/[^a-zA-Z0-9]/g, '_') : 
+		chat.id.user.replace(/[^a-zA-Z0-9]/g, '_');
+
 	if (msg.hasMedia) {
-		const media = await msg.downloadMedia();
-		const mime = media.mimetype;
+		try {
+			const media = await msg.downloadMedia();
+			
+			if (!media || !media.mimetype) {
+				console.log(`\n🖼 Media message from ${sender}${isGroup ? ` in ${chatName}` : ''} (unavailable)`);
+				console.log(`⚠️ Media could not be downloaded (expired or corrupted)`);
+				return;
+			}
 
-		notifier.notify({
-			title: isGroup ? `💬 ${chatName}` : "💬 WhatsApp CLI",
-			message: isGroup ? `${sender}: Media message` : "New media message!",
-			sound: true,
-			wait: false
-		});
+			const mime = media.mimetype;
+			const ext = mime.split('/')[1].split(';')[0];
 
-		console.log(`\n🖼 Media message from ${sender}${isGroup ? ` in ${chatName}` : ''}`);
-		console.log(`📎 Type: ${mime}`);
-		if (msg.caption) console.log(`💬 Caption: ${msg.caption}`);
+			// Check if media already exists using message ID
+			const fs = require('fs');
+			const path = require('path');
+			const mediaDir = path.join(__dirname, 'media');
+			const senderDir = path.join(mediaDir, folderName);
+			
+			// Create directories if they don't exist
+			if (!fs.existsSync(mediaDir)) {
+				fs.mkdirSync(mediaDir, { recursive: true });
+			}
+			if (!fs.existsSync(senderDir)) {
+				fs.mkdirSync(senderDir, { recursive: true });
+			}
+			
+			const filename = `${msg.id.id}.${ext}`;  // Use message ID instead of timestamp
+			const filePath = path.join(senderDir, filename);
+
+			// Only save if file doesn't exist
+			if (!fs.existsSync(filePath)) {
+				const buffer = Buffer.from(media.data, 'base64');
+				fs.writeFileSync(filePath, buffer);
+				console.log(`💾 Auto-saved to media/${folderName}/${filename}`);
+			} else {
+				console.log(`💾 Media already saved: media/${folderName}/${filename}`);
+			}
+
+			notifier.notify({
+				title: isGroup ? `💬 ${chatName}` : "💬 WhatsApp CLI",
+				message: isGroup ? `${sender}: Media message` : "New media message!",
+				sound: true,
+				wait: false
+			});
+
+			console.log(`\n🖼 Media message from ${sender}${isGroup ? ` in ${chatName}` : ''}`);
+			console.log(`📎 Type: ${mime}`);
+			if (msg.caption) console.log(`💬 Caption: ${msg.caption}`);
+		} catch (error) {
+			console.log(`\n🖼 Media message from ${sender}${isGroup ? ` in ${chatName}` : ''} (download failed)`);
+			console.log(`❌ Error downloading media: ${error.message}`);
+		}
 	} else if (msg.body) {
 		notifier.notify({
 			title: isGroup ? `${prefix} ${chatName}` : `📨 Message from ${sender}`,
@@ -282,19 +326,54 @@ function startPrompt() {
 					const author = m.fromMe ? 'You' : targetChat.name || m.from;
 
 					if (m.hasMedia) {
-						const media = await m.downloadMedia();
-						const mime = media.mimetype;
-						const ext = mime.split('/')[1].split(';')[0];  // clean extension
-						const filename = `read-media-${Date.now()}.${ext}`;
+						try {
+							const media = await m.downloadMedia();
+							
+							if (!media || !media.mimetype) {
+								console.log(`${author}: 🖼 Media message (unavailable)`);
+								console.log(`         ⚠️ Media could not be downloaded (expired or corrupted)`);
+								continue;
+							}
 
+							const mime = media.mimetype;
+							const ext = mime.split('/')[1].split(';')[0];  // clean extension
+							
+							// Create organized folder structure using consistent naming
+							const mediaDir = path.join(__dirname, 'media');
+							const folderName = targetChat.isGroup ? 
+								targetChat.name.replace(/[^a-zA-Z0-9]/g, '_') : 
+								targetChat.id.user.replace(/[^a-zA-Z0-9]/g, '_');
+							const senderDir = path.join(mediaDir, folderName);
+							
+							// Create directories if they don't exist
+							if (!fs.existsSync(mediaDir)) {
+								fs.mkdirSync(mediaDir, { recursive: true });
+							}
+							if (!fs.existsSync(senderDir)) {
+								fs.mkdirSync(senderDir, { recursive: true });
+							}
+							
+							const filename = `${m.id.id}.${ext}`;  // Use message ID instead of timestamp
+							const filePath = path.join(senderDir, filename);
 
-						const buffer = Buffer.from(media.data, 'base64');
-						fs.writeFileSync(path.join(__dirname, filename), buffer);
-
-						console.log(`${author}: 🖼 Media message`);
-						console.log(`         📎 Type: ${mime}`);
-						if (m.caption) console.log(`         💬 Caption: ${m.caption}`);
-						console.log(`         💾 Saved to ${filename}`);
+							// Only save if file doesn't exist
+							if (!fs.existsSync(filePath)) {
+								const buffer = Buffer.from(media.data, 'base64');
+								fs.writeFileSync(filePath, buffer);
+								console.log(`${author}: 🖼 Media message`);
+								console.log(`         📎 Type: ${mime}`);
+								if (m.caption) console.log(`         💬 Caption: ${m.caption}`);
+								console.log(`         💾 Saved to media/${folderName}/${filename}`);
+							} else {
+								console.log(`${author}: 🖼 Media message`);
+								console.log(`         📎 Type: ${mime}`);
+								if (m.caption) console.log(`         💬 Caption: ${m.caption}`);
+								console.log(`         💾 Already saved: media/${folderName}/${filename}`);
+							}
+						} catch (error) {
+							console.log(`${author}: 🖼 Media message (download failed)`);
+							console.log(`         ❌ Error: ${error.message}`);
+						}
 					} else if (m.body) {
 						console.log(`${author}: ${m.body}`);
 					} else {

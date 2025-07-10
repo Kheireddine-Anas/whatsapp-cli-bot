@@ -14,7 +14,7 @@ yarn.lock
 session/
 
 # Downloaded media files from messages
-read-media-*
+media/
 *.jpg
 *.jpeg
 *.png
