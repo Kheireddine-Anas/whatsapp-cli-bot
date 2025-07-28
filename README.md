@@ -170,3 +170,43 @@ Feel free to fork this project and submit pull requests for improvements or bug 
 ## ⚠️ Disclaimer
 
 This bot uses unofficial WhatsApp Web API. Use at your own risk and ensure compliance with WhatsApp's Terms of Service.
+
+## 🔧 Running as a Background Service
+
+For advanced users who want to run WhatsApp CLI as a background service (daemon), there's a separate service version available in the `/AsService` folder.
+
+### Service Features
+- **Background Operation**: Runs as a systemd service
+- **Socket Communication**: Use Unix sockets to interact with the running service
+- **Interactive Client**: Full-featured CLI client for service interaction
+- **Auto-start**: Starts automatically on system boot
+- **Service Management**: Standard systemd controls (start, stop, restart, status)
+
+### Quick Service Setup
+```bash
+cd AsService
+./install.sh
+```
+
+### Service Usage
+```bash
+# Connect to the running service
+./whatsapp
+
+# Or if symlink was created during installation
+whatsapp-cli
+```
+
+### Service Management
+```bash
+# Check service status
+sudo systemctl status whatsapp-cli
+
+# View service logs
+sudo journalctl -u whatsapp-cli -f
+
+# Restart service
+sudo systemctl restart whatsapp-cli
+```
+
+For detailed service documentation, see [`AsService/README.md`](AsService/README.md).
